@@ -146,3 +146,15 @@ def test_exact_budget_keeps_full_width_when_the_row_fits():
 
     assert len(chunks) == 1
     _assert_budgeted_table(chunks, headers, rows, budget, (1,))
+
+
+def test_search_limit_falls_back_to_greedy_without_losing_cells(monkeypatch):
+    monkeypatch.setattr("rag_table_ai.chunker._MAX_BALANCED_COUNTS", 1)
+    headers = ["Key", "A", "B", "C"]
+    rows = [[f"K{i}", "A" * 13, "B" * 13, "C" * 13] for i in range(5)]
+    chunker = SourceAwareTableChunker(3, max_tokens=70, count_tokens=len, repeat_columns=(1,))
+
+    chunks = chunker.split_rows(headers, rows)
+
+    assert len({tuple(chunk.metadata["column_indices"]) for chunk in chunks}) > 1
+    _assert_budgeted_table(chunks, headers, rows, 70, (1,))

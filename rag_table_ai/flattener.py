@@ -75,7 +75,12 @@ def flatten_table_chunk(
                     caption = prev.lstrip("#").strip()
                     break
 
-            headers, data_rows = resolve_composite_headers(table_lines)
+            try:
+                headers, data_rows = resolve_composite_headers(table_lines, has_separator=True)
+            except ValueError:
+                # Document rendering keeps malformed pipe blocks verbatim.
+                output_parts.extend(table_lines)
+                continue
             if not headers:
                 output_parts.extend(table_lines)
                 continue

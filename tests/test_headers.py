@@ -47,3 +47,11 @@ def test_resolve_two_tier_composite_headers():
     ]
     assert len(rows) == 2
     assert rows[0] == ["Tier 1", "$10", "$100", "$50", "$500"]
+
+
+def test_explicit_delimiterless_table_keeps_dash_only_rows():
+    from rag_table_ai import RagTableAI
+
+    chunk = RagTableAI().split_table("| Item | Cost |\n| A | 1 |\n| - | - |", has_separator=False)[0]
+    assert chunk.headers == ["Item", "Cost"]
+    assert chunk.rows == [["A", "1"], ["-", "-"]]

@@ -52,3 +52,11 @@ def test_truncation_retains_matches_and_table_row_numbers():
     flattened = flatten_table_chunk(table, max_table_rows=1, query_hint="TARGET")
     assert "[Row 4] Item: TARGET" in flattened
     assert "showing 1 of 4 rows" in flattened
+
+
+def test_malformed_pipe_block_does_not_abort_flattening_later_tables():
+    malformed = "| Label |\n| --- |\n| A | extra |"
+    valid = "| Label |\n| --- |\n| B |"
+    output = flatten_table_chunk(f"{malformed}\n\n{valid}")
+    assert malformed in output
+    assert "[Row 1] Label: B" in output

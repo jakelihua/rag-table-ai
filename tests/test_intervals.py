@@ -56,3 +56,25 @@ def test_decimal_range_uses_whole_bounds():
     assert not match_interval("1.5–2.5 kg", "2.5001 kg")
     assert extract_range("2.5–1.5 kg") is None
     assert expand_interval_hint("1.5–2.5 kg") == "1.5–2.5 kg"
+
+
+def test_compound_units_currency_codes_and_grouped_numbers_use_numeric_bounds():
+    for cell, inside, outside in (
+        ("10–20 °C", "15 °C", "0 °C"),
+        ("10–25 km/h", "20 km/h", "5 km/h"),
+        ("USD 100–500", "USD 250", "USD 10"),
+        ("10,000–12,500元", "11,000元", "2,500元"),
+    ):
+        assert match_interval(cell, inside)
+        assert not match_interval(cell, outside)
+    assert not match_interval("USD 100–500", "EUR 250")
+    assert not match_interval("10–20 °C", "15 °F")
+
+
+def test_unsupported_numbers_do_not_fall_back_to_partial_text():
+    assert not match_interval("10–20 g/(kg·day)", "0 g/(kg·day)")
+    assert not match_interval("> 20 °C", "0 °C")
+    assert not match_interval("10,00–12,500元", "2,500元")
+    assert not match_interval("Standard", "Non-Standard")
+    assert not match_interval("Non-Standard", "Standard")
+    assert match_interval("R&D", "R&D")

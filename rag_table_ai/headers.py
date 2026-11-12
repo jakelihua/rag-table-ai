@@ -31,21 +31,28 @@ def split_table_row(line: str) -> list[str]:
 
 def resolve_composite_headers(
     lines: list[str],
+    *,
+    has_separator: bool | None = None,
 ) -> tuple[list[str], list[list[str]]]:
     """Resolve column labels and return the parsed data rows.
 
     A delimiter can follow one header row or a two-row header whose blank
     parent cells continue the previous label. Without a delimiter, the first
-    row is the header. Rows wider than the resolved header raise ValueError.
+    row is the header. Pass has_separator=False for a delimiterless table
+    containing dash-only rows. Rows wider than the header raise ValueError.
     """
     clean_lines = [line.strip() for line in lines if line.strip()]
     if not clean_lines:
         return [], []
 
-    separator = next(
-        (i for i, line in enumerate(clean_lines) if is_markdown_separator(line)),
-        None,
-    )
+    separator = None
+    if has_separator is not False:
+        separator = next(
+            (i for i, line in enumerate(clean_lines) if is_markdown_separator(line)),
+            None,
+        )
+    if has_separator is True and separator is None:
+        raise ValueError("Expected a Markdown delimiter.")
     if separator is not None and separator not in (1, 2):
         raise ValueError("Expected a Markdown delimiter after one or two header rows.")
 

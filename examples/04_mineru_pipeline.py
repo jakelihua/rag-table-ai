@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import re
 
-from rag_table_ai import RagTableAI, SourceAwareTableChunker, split_mineru_content_list, split_table_row
+from rag_table_ai import RagTableAI, SourceAwareTableChunker, split_mineru_content_list
 
 FIXTURE = Path(__file__).with_name("fixtures") / "shipping_content_list.json"
 BUDGET = 45
@@ -45,10 +45,7 @@ def main() -> None:
             continue
         weight_index = chunk.headers.index("Weight")
         price_index = chunk.headers.index("Rate (USD) / Express")
-        row_count = chunk.end_row - chunk.start_row + 1
-        data_lines = chunk.markdown_text.splitlines()[-row_count:]
-        for row_number, line in enumerate(data_lines, chunk.start_row):
-            row = split_table_row(line)
+        for row_number, row in enumerate(chunk.rows, chunk.start_row):
             if engine.match(row[weight_index], "15 kg"):
                 matches.append((chunk, row_number, row[price_index]))
     if len(matches) != 1:

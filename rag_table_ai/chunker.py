@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from rag_table_ai.headers import resolve_composite_headers
@@ -11,6 +11,7 @@ from rag_table_ai.headers import resolve_composite_headers
 # Limit the quadratic search to moderate widths. The greedy fallback still
 # enforces the same budget and cell coverage for wider tables.
 _MAX_BALANCED_COLUMNS = 32
+_MAX_BALANCED_COUNTS = 4_096
 
 
 @dataclass
@@ -22,6 +23,7 @@ class TableChunk:
     headers: list[str]
     markdown_text: str
     metadata: dict[str, Any]
+    rows: list[list[str]] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -34,6 +36,10 @@ class _Part:
 
 
 class _RowOverflow(ValueError):
+    pass
+
+
+class _PlanningLimit(Exception):
     pass
 
 
@@ -80,9 +86,11 @@ class SourceAwareTableChunker:
         table_markdown: str,
         table_id: str = "table_1",
         caption: str = "",
+        *,
+        has_separator: bool | None = None,
     ) -> list[TableChunk]:
         """Split a pipe table into self-contained chunks."""
-        headers, rows = resolve_composite_headers(table_markdown.splitlines())
+        headers, rows = resolve_composite_headers(table_markdown.splitlines(), has_separator=has_separator)
         return self.split_rows(headers, rows, table_id=table_id, caption=caption)
 
     def split_rows(
@@ -106,7 +114,7 @@ class SourceAwareTableChunker:
                 raise ValueError(f"Data row {number} has {len(row)} cells; expected at most {width}.")
             rows.append(list(row) + [""] * (width - len(row)))
 
-        caption = " ".join(caption.splitlines())
+        caption = " ".join(caption.splitlines()).strip()
         columns = tuple(range(width))
         keys = self._repeated_column_indices(width)
         try:
@@ -117,9 +125,13 @@ class SourceAwareTableChunker:
             values = tuple(col for col in columns if col not in keys)
             if not values:
                 raise ValueError("Repeated columns exceed the token budget.") from None
+            parts = None
             if len(values) <= _MAX_BALANCED_COLUMNS:
-                parts = self._balance_columns(headers, rows, caption, keys, values)
-            else:
+                try:
+                    parts = self._balance_columns(headers, rows, caption, keys, values)
+                except _PlanningLimit:
+                    pass
+            if parts is None:
                 parts = [
                     part
                     for group in self._greedy_column_groups(headers, rows, caption, keys, values)
@@ -139,6 +151,7 @@ class SourceAwareTableChunker:
                 end_row=part.end,
                 headers=[headers[col] for col in part.columns],
                 markdown_text=text,
+                rows=[[row[col] for col in part.columns] for row in rows[part.start:part.end]],
                 metadata={
                     **(source_metadata or {}),
                     "table_id": table_id,
@@ -166,8 +179,11 @@ class SourceAwareTableChunker:
         rows: Sequence[Sequence[str]],
         columns: tuple[int, ...],
         caption: str,
+        *,
+        count: Callable[[str], int] | None = None,
     ) -> list[_Part]:
         limit = self.max_tokens
+        measure = count or self._count
         prefix = _render_header(headers, columns, caption if limit is not None else "")
         lines = [_render_row([row[col] for col in columns]) for row in rows]
         parts = []
@@ -180,13 +196,13 @@ class SourceAwareTableChunker:
                 continue
 
             text = f"{prefix}\n{lines[start]}"
-            units = self._count(text)
+            units = measure(text)
             if units > limit:
                 raise _RowOverflow(f"Data row {start + 1} exceeds the token budget.")
             next_row = start + 1
             while next_row < end:
                 candidate = f"{text}\n{lines[next_row]}"
-                size = self._count(candidate)
+                size = measure(candidate)
                 if size > limit:
                     break
                 text, units = candidate, size
@@ -215,12 +231,21 @@ class SourceAwareTableChunker:
     ) -> list[_Part]:
         # Work backwards over contiguous value columns. Score each projection
         # after packing its rows, then add the best already solved suffix.
+        remaining_counts = _MAX_BALANCED_COUNTS
+
+        def measure(text: str) -> int:
+            nonlocal remaining_counts
+            if not remaining_counts:
+                raise _PlanningLimit
+            remaining_counts -= 1
+            return self._count(text)
+
         size = len(values)
         minimum_parts = (len(rows) + self.max_rows_per_chunk - 1) // self.max_rows_per_chunk
         scores = {size: (0, 0)}
         choices: dict[int, tuple[int, list[_Part]]] = {}
         for start in range(size - 1, -1, -1):
-            for end in range(start + 1, size + 1):
+            for end in range(size, start, -1):
                 if start == 0 and end == size:
                     # This is the full-width projection, which already overflowed.
                     continue
@@ -231,7 +256,7 @@ class SourceAwareTableChunker:
                     continue
                 columns = tuple(sorted(keys.union(values[start:end])))
                 try:
-                    parts = self._pack_rows(headers, rows, columns, caption)
+                    parts = self._pack_rows(headers, rows, columns, caption, count=measure)
                 except _RowOverflow:
                     continue
                 score = (len(parts) + suffix[0], sum(part.units for part in parts) + suffix[1])
@@ -243,7 +268,7 @@ class SourceAwareTableChunker:
             # Without a viable partition, name the individually oversized column.
             for col in values:
                 try:
-                    self._pack_rows(headers, rows, tuple(sorted(keys | {col})), caption)
+                    self._pack_rows(headers, rows, tuple(sorted(keys | {col})), caption, count=measure)
                 except _RowOverflow as exc:
                     raise ValueError(f"Column {col + 1} with repeated columns exceeds the token budget.") from exc
             raise ValueError("No column grouping fits the token budget.")
@@ -270,7 +295,7 @@ class SourceAwareTableChunker:
             prefix = _render_header(headers, columns, caption)
             return all(
                 self._count(f"{prefix}\n{_render_row([row[col] for col in columns])}") <= budget
-                for row in rows
+                for row in reversed(rows)
             )
 
         groups = []

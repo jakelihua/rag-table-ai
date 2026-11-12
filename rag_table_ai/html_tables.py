@@ -121,22 +121,31 @@ def _span(attrs: dict, name: str) -> int:
 
 def _header_count(rows: list[_Row], header_rows: int | None) -> int:
     if header_rows is not None:
-        if type(header_rows) is not int or not 1 <= header_rows <= len(rows):
-            raise ValueError("header_rows must be between 1 and the HTML table row count.")
+        if type(header_rows) is not int or not 1 <= header_rows < len(rows):
+            raise ValueError("header_rows must leave at least one HTML data row.")
         return header_rows
 
     thead = [idx for idx, row in enumerate(rows) if row.in_thead]
     if thead:
         if thead != list(range(len(thead))):
             raise ValueError("Expected the HTML table header section before the data.")
-        return len(thead)
-
-    count = 0
-    for row in rows:
-        if not row.cells or not all(cell.is_header for cell in row.cells):
+        count = len(thead)
+    else:
+        count = 0
+        for row in rows:
+            header_cells = sum(cell.is_header for cell in row.cells)
+            if header_cells and all(cell.is_header or not cell.text for cell in row.cells):
+                count += 1
+                continue
+            if count and header_cells >= 2 and any(
+                cell.colspan > 1 for previous in rows[:count] for cell in previous.cells
+            ):
+                raise ValueError("Ambiguous mixed HTML header rows; specify header_rows.")
             break
-        count += 1
-    return count or 1
+        count = count or 1
+    if count >= len(rows):
+        raise ValueError("HTML table requires at least one data row after the header.")
+    return count
 
 
 def _expand_grid(rows: list[_Row], header_count: int) -> list[list[_Cell]]:
@@ -183,8 +192,8 @@ def split_html_table(
 ) -> list[TableChunk]:
     """Expand spans, resolve header paths, and chunk a single HTML table.
 
-    Header rows come from thead or leading all-th rows. For tables without
-    header markup, pass header_rows when more than one row is a header.
+    Header rows come from thead or leading th rows with optional blank td cells.
+    Specify header_rows for ambiguous mixed rows or multiple all-td header rows.
     """
     parser = _TableParser()
     parser.feed(table_html)
@@ -205,7 +214,7 @@ def split_html_table(
             previous = cell
         paths.append(path or [f"Column_{col + 1}"])
 
-    headers = [_markdown_cell(" / ".join(path)) for path in paths]
+    headers = [" / ".join(path) for path in paths]
     # Spans share a _Cell instance. Normalize its text once for the whole grid.
     rendered_cells = {}
     rows = []
@@ -218,10 +227,16 @@ def split_html_table(
             rendered_row.append(rendered_cells[key])
         rows.append(rendered_row)
 
-    return (chunker or SourceAwareTableChunker()).split_rows(
-        headers,
+    chunks = (chunker or SourceAwareTableChunker()).split_rows(
+        [_markdown_cell(header) for header in headers],
         rows,
         table_id=table_id,
-        caption=caption or " ".join("".join(parser.caption).split()),
+        caption=caption.strip() or " ".join("".join(parser.caption).split()),
         source_metadata={**(source_metadata or {}), "header_paths": paths},
     )
+    for chunk in chunks:
+        columns = [column - 1 for column in chunk.metadata["column_indices"]]
+        chunk.headers = [headers[col] for col in columns]
+        data = grid[header_count + chunk.start_row - 1:header_count + chunk.end_row]
+        chunk.rows = [[row[col].text for col in columns] for row in data]
+    return chunks

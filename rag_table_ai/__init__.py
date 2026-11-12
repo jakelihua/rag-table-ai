@@ -56,12 +56,15 @@ class RagTableAI:
         table_markdown: str,
         table_id: str = "table_1",
         caption: str = "",
+        *,
+        has_separator: bool | None = None,
     ) -> list[TableChunk]:
         """Split large table into header-preserving sub-tables for RAG chunking."""
         return self.chunker.split_table(
             table_markdown=table_markdown,
             table_id=table_id,
             caption=caption,
+            has_separator=has_separator,
         )
 
     def match(self, cell_text: str, query_text: str) -> bool:

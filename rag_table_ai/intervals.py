@@ -5,11 +5,14 @@ from __future__ import annotations
 import re
 from decimal import Decimal
 
-_NUMBER = r"[+\-−]?[0-9]{1,64}(?:\.[0-9]{1,64})?"
-_UNIT = r"[A-Za-z]+(?:\s+old)?|[\u4e00-\u9fff]+|%"
-_QUANTITY = rf"[$¥€£]?\s*{_NUMBER}(?:\s*(?:{_UNIT}))?"
+_NUMBER = r"[+\-−]?(?:[0-9]{1,3}(?:,[0-9]{3}){1,21}|[0-9]{1,64})(?:\.[0-9]{1,64})?"
+_CURRENCY_CODES = ("USD", "EUR", "GBP", "CNY", "JPY", "HKD", "CAD", "AUD", "CHF", "INR")
+_PREFIX = rf"(?:[$¥€£]\s*|(?:{'|'.join(_CURRENCY_CODES)})\s+)"
+_UNIT_PART = r"[A-Za-zµμ]+[²³]?"
+_UNIT = rf"{_UNIT_PART}(?:/{_UNIT_PART})?|[A-Za-z]+\s+old|°[CF]|[\u4e00-\u9fff]+|%"
+_QUANTITY = rf"(?:{_PREFIX})?{_NUMBER}(?:\s*(?:{_UNIT}))?"
 _QUANTITY_RE = re.compile(
-    rf"(?P<currency>[$¥€£])?\s*(?P<number>{_NUMBER})(?:\s*(?P<unit>{_UNIT}))?",
+    rf"(?P<currency>{_PREFIX})?(?P<number>{_NUMBER})(?:\s*(?P<unit>{_UNIT}))?",
     re.IGNORECASE,
 )
 _RANGE_RE = re.compile(
@@ -30,12 +33,16 @@ def _parse_quantity(text: str) -> tuple[int | Decimal, str] | None:
     match = _QUANTITY_RE.fullmatch(text.strip())
     if match is None:
         return None
-    currency = match["currency"]
+    currency = (match["currency"] or "").strip().upper()
     suffix = " ".join((match["unit"] or "").split())
     if currency and suffix:
         return None
+    if suffix.upper() in _CURRENCY_CODES:
+        suffix = suffix.upper()
     unit = currency or _UNIT_ALIASES.get(suffix.lower(), suffix)
-    number = match["number"].replace("−", "-")
+    number = match["number"].replace("−", "-").replace(",", "")
+    if len(number.lstrip("+-").split(".", 1)[0]) > 64:
+        return None
     return (Decimal(number) if "." in number else int(number), unit)
 
 
@@ -90,11 +97,13 @@ def match_interval(cell_text: str, query_text: str) -> bool:
     if cell_point is not None or point is not None:
         return cell_point == point
 
-    norm_cell = re.sub(r"[\s_]", "", cell)
-    norm_query = re.sub(r"[\s_]", "", query)
-    if not norm_cell or not norm_query:
+    norm_cell = " ".join(cell.split())
+    norm_query = " ".join(query.split())
+    if norm_cell == norm_query:
+        return True
+    if any(char.isdecimal() for text in (cell, query) for char in text):
         return False
-    return norm_query in norm_cell or norm_cell in norm_query
+    return norm_cell.startswith(norm_query + " ")
 
 
 def expand_interval_hint(cell_text: str, max_expanded: int = 12) -> str:
