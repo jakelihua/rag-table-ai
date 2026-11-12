@@ -8,6 +8,10 @@ from typing import Any
 
 from rag_table_ai.headers import resolve_composite_headers
 
+# Limit the quadratic search to moderate widths. The greedy fallback still
+# enforces the same budget and cell coverage for wider tables.
+_MAX_BALANCED_COLUMNS = 32
+
 
 @dataclass
 class TableChunk:
@@ -20,20 +24,31 @@ class TableChunk:
     metadata: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class _Part:
+    start: int
+    end: int
+    columns: tuple[int, ...]
+    text: str
+    units: int = 0
+
+
+class _RowOverflow(ValueError):
+    pass
+
+
 def _render_row(cells: Sequence[str]) -> str:
     return "| " + " | ".join(cells) + " |"
 
 
-def _render_table(
+def _render_header(
     headers: Sequence[str],
-    rows: Sequence[Sequence[str]],
     columns: Sequence[int],
     caption: str,
 ) -> str:
     lines = [f"### {caption}"] if caption else []
     lines.append(_render_row([headers[col] for col in columns]))
     lines.append(_render_row(["---"] * len(columns)))
-    lines.extend(_render_row([row[col] for col in columns]) for row in rows)
     return "\n".join(lines)
 
 
@@ -92,98 +107,183 @@ class SourceAwareTableChunker:
             rows.append(list(row) + [""] * (width - len(row)))
 
         caption = " ".join(caption.splitlines())
-        groups = self._column_groups(headers, rows, caption)
-        parts = []
-        for columns in groups:
-            start = 0
-            while start < len(rows):
-                limit = min(start + self.max_rows_per_chunk, len(rows))
-                end = limit
-                if self.max_tokens is not None:
-                    end = start + 1
-                    text = _render_table(headers, rows[start:end], columns, caption)
-                    if not self._fits(text):
-                        raise ValueError(f"Data row {end} exceeds the token budget.")
-                    while end < limit:
-                        candidate = _render_table(headers, rows[start:end + 1], columns, caption)
-                        if not self._fits(candidate):
-                            break
-                        end += 1
-                        text = candidate
-                else:
-                    text = _render_table(headers, rows[start:end], columns, "")
-                parts.append((start, end, columns, text))
-                start = end
+        columns = tuple(range(width))
+        keys = self._repeated_column_indices(width)
+        try:
+            parts = self._pack_rows(headers, rows, columns, caption)
+        except _RowOverflow:
+            if keys is None:
+                raise
+            values = tuple(col for col in columns if col not in keys)
+            if not values:
+                raise ValueError("Repeated columns exceed the token budget.") from None
+            if len(values) <= _MAX_BALANCED_COLUMNS:
+                parts = self._balance_columns(headers, rows, caption, keys, values)
+            else:
+                parts = [
+                    part
+                    for group in self._greedy_column_groups(headers, rows, caption, keys, values)
+                    for part in self._pack_rows(headers, rows, group, caption)
+                ]
 
         chunks = []
         total = len(parts)
-        for index, (start, end, columns, text) in enumerate(parts, 1):
+        for index, part in enumerate(parts, 1):
+            text = part.text
             if caption and self.max_tokens is None:
                 text = f"### {caption} (Part {index}/{total})\n{text}"
             chunks.append(TableChunk(
                 chunk_index=index,
                 total_chunks=total,
-                start_row=start + 1,
-                end_row=end,
-                headers=[headers[col] for col in columns],
+                start_row=part.start + 1,
+                end_row=part.end,
+                headers=[headers[col] for col in part.columns],
                 markdown_text=text,
                 metadata={
                     **(source_metadata or {}),
                     "table_id": table_id,
                     "caption": caption,
-                    "start_row": start + 1,
-                    "end_row": end,
+                    "start_row": part.start + 1,
+                    "end_row": part.end,
                     "total_rows": len(rows),
                     "chunk_index": index,
                     "total_chunks": total,
-                    "column_indices": [col + 1 for col in columns],
+                    "column_indices": [col + 1 for col in part.columns],
                 },
             ))
         return chunks
 
-    def _fits(self, text: str) -> bool:
-        assert self.count_tokens is not None and self.max_tokens is not None
+    def _count(self, text: str) -> int:
+        assert self.count_tokens is not None
         count = self.count_tokens(text)
         if type(count) is not int or count < 0:
             raise ValueError("count_tokens must return a nonnegative integer.")
-        return count <= self.max_tokens
+        return count
 
-    def _column_groups(
+    def _pack_rows(
         self,
         headers: Sequence[str],
         rows: Sequence[Sequence[str]],
+        columns: tuple[int, ...],
         caption: str,
-    ) -> list[tuple[int, ...]]:
-        all_columns = tuple(range(len(headers)))
+    ) -> list[_Part]:
+        limit = self.max_tokens
+        prefix = _render_header(headers, columns, caption if limit is not None else "")
+        lines = [_render_row([row[col] for col in columns]) for row in rows]
+        parts = []
+        start = 0
+        while start < len(lines):
+            end = min(start + self.max_rows_per_chunk, len(lines))
+            if limit is None:
+                parts.append(_Part(start, end, columns, "\n".join([prefix, *lines[start:end]])))
+                start = end
+                continue
+
+            text = f"{prefix}\n{lines[start]}"
+            units = self._count(text)
+            if units > limit:
+                raise _RowOverflow(f"Data row {start + 1} exceeds the token budget.")
+            next_row = start + 1
+            while next_row < end:
+                candidate = f"{text}\n{lines[next_row]}"
+                size = self._count(candidate)
+                if size > limit:
+                    break
+                text, units = candidate, size
+                next_row += 1
+            parts.append(_Part(start, next_row, columns, text, units))
+            start = next_row
+        return parts
+
+    def _repeated_column_indices(self, width: int) -> set[int] | None:
         if self.repeat_columns is None:
-            return [all_columns]
-        if any(type(col) is not int or not 1 <= col <= len(headers) for col in self.repeat_columns):
+            return None
+        if any(type(col) is not int or not 1 <= col <= width for col in self.repeat_columns):
             raise ValueError("repeat_columns must contain 1-based column indices within the table.")
         keys = {col - 1 for col in self.repeat_columns}
         if len(keys) != len(self.repeat_columns):
             raise ValueError("repeat_columns must contain unique column indices.")
+        return keys
+
+    def _balance_columns(
+        self,
+        headers: Sequence[str],
+        rows: Sequence[Sequence[str]],
+        caption: str,
+        keys: set[int],
+        values: tuple[int, ...],
+    ) -> list[_Part]:
+        # Work backwards over contiguous value columns. Score each projection
+        # after packing its rows, then add the best already solved suffix.
+        size = len(values)
+        minimum_parts = (len(rows) + self.max_rows_per_chunk - 1) // self.max_rows_per_chunk
+        scores = {size: (0, 0)}
+        choices: dict[int, tuple[int, list[_Part]]] = {}
+        for start in range(size - 1, -1, -1):
+            for end in range(start + 1, size + 1):
+                if start == 0 and end == size:
+                    # This is the full-width projection, which already overflowed.
+                    continue
+                suffix = scores.get(end)
+                if suffix is None:
+                    continue
+                if start in scores and minimum_parts + suffix[0] > scores[start][0]:
+                    continue
+                columns = tuple(sorted(keys.union(values[start:end])))
+                try:
+                    parts = self._pack_rows(headers, rows, columns, caption)
+                except _RowOverflow:
+                    continue
+                score = (len(parts) + suffix[0], sum(part.units for part in parts) + suffix[1])
+                if start not in scores or score < scores[start]:
+                    scores[start] = score
+                    choices[start] = (end, parts)
+
+        if 0 not in choices:
+            # Without a viable partition, name the individually oversized column.
+            for col in values:
+                try:
+                    self._pack_rows(headers, rows, tuple(sorted(keys | {col})), caption)
+                except _RowOverflow as exc:
+                    raise ValueError(f"Column {col + 1} with repeated columns exceeds the token budget.") from exc
+            raise ValueError("No column grouping fits the token budget.")
+
+        result = []
+        start = 0
+        while start < size:
+            start, parts = choices[start]
+            result.extend(parts)
+        return result
+
+    def _greedy_column_groups(
+        self,
+        headers: Sequence[str],
+        rows: Sequence[Sequence[str]],
+        caption: str,
+        keys: set[int],
+        values: tuple[int, ...],
+    ) -> list[tuple[int, ...]]:
+        assert self.max_tokens is not None
+        budget = self.max_tokens
 
         def fits_all_rows(columns: tuple[int, ...]) -> bool:
-            return all(self._fits(_render_table(headers, [row], columns, caption)) for row in rows)
-
-        if fits_all_rows(all_columns):
-            return [all_columns]
+            prefix = _render_header(headers, columns, caption)
+            return all(
+                self._count(f"{prefix}\n{_render_row([row[col] for col in columns])}") <= budget
+                for row in rows
+            )
 
         groups = []
         current: list[int] = []
-        for column in all_columns:
-            if column in keys:
-                continue
-            candidate = tuple(sorted(keys.union(current, (column,))))
+        for col in values:
+            candidate = tuple(sorted(keys.union(current, (col,))))
             if fits_all_rows(candidate):
-                current.append(column)
+                current.append(col)
                 continue
             if current:
                 groups.append(tuple(sorted(keys.union(current))))
-            if not fits_all_rows(tuple(sorted(keys | {column}))):
-                raise ValueError(f"Column {column + 1} with repeated columns exceeds the token budget.")
-            current = [column]
-        if not current:
-            raise ValueError("Repeated columns exceed the token budget.")
+            if not fits_all_rows(tuple(sorted(keys | {col}))):
+                raise ValueError(f"Column {col + 1} with repeated columns exceeds the token budget.")
+            current = [col]
         groups.append(tuple(sorted(keys.union(current))))
         return groups
