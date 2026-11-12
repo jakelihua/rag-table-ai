@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "rag-table-ai"
 version = "0.1.0"
-description = "Header-preserving table chunking and numeric lookup helpers for RAG."
+description = "Header-preserving table chunking and evidence lookup for RAG, with MinerU HTML and token-budget support."
 readme = "README.md"
 authors = [
     { name = "Jake Lihua", email = "jakelihua@gmail.com" }
@@ -27,14 +27,14 @@ classifiers = [
 ]
 keywords = [
     "rag",
-    "llm",
-    "document-processing",
     "table-chunking",
-    "agentic-rag",
-    "deterministic-ai",
-    "markdown-tables",
-    "html-tables",
     "mineru",
+    "html-tables",
+    "markdown-tables",
+    "chunking",
+    "document-processing",
+    "llm",
+    "python",
 ]
 
 dependencies = []

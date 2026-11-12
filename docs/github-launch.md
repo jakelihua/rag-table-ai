@@ -4,8 +4,8 @@
 
 把 [英文 README](../README.md) 和 [中文 README](../README.zh-CN.md) 放到默认分支后，再把流量集中到仓库首页。首屏的用例保持为运费表，访客可以看到列名如何随切片保留，然后直接运行 [MinerU 示例](../examples/04_mineru_pipeline.py)。
 
-- **About** — `Header-preserving table chunking for RAG. Supports MinerU HTML, token budgets, and source citations.`
-- **Topics** — `rag`, `python`, `mineru`, `table-chunking`, `html-tables`, `markdown-tables`, `document-processing`。它们对应用户会找的输入格式和任务。[GitHub Topics](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/classifying-your-repository-with-topics)
+- **About** — `专治 RAG 复杂表格“切碎丢表头”难题（支持合并表头展开、MinerU HTML 与预算切片） | Header-preserving table chunking & evidence lookup for RAG`
+- **Topics** — `rag`, `table-chunking`, `mineru`, `html-tables`, `markdown-tables`, `chunking`, `document-processing`, `llm`, `python`。它们对应用户会搜索的上下游工具、输入格式与核心任务。[GitHub Topics](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/classifying-your-repository-with-topics)
 - **社交预览** — 左边展示 `11–20 kg | 12.00 | 18.00`，右边保留 `Weight | Standard | Express`，底部放 `USD 14.40 · PDF p.3 · row 2`。预览图、README 和文章共用同一案例。[GitHub 仓库自定义](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository)
 
 ## 首次发布
