@@ -70,7 +70,7 @@ The [shipping demo](examples/03_shipping_rates.py) selects the matching tier and
 python examples/04_mineru_pipeline.py
 ```
 
-The demo uses a [synthetic MinerU Content List V1 fixture](examples/fixtures/shipping_content_list.json) with two header rows and merged cells. It preserves all 10 logical data cells across four chunks, selects the express rate for 15 kg, and returns **USD 14.40** with the citation **shipping.pdf, page 3, data row 2**. The demo uses a regex count for reproducibility.
+The [MinerU demo](examples/04_mineru_pipeline.py) uses a [synthetic MinerU Content List V1 fixture](examples/fixtures/shipping_content_list.json) with two header rows and merged cells. It preserves all 10 logical data cells across four chunks, selects the express rate for 15 kg, and returns **USD 14.40** with the citation **shipping.pdf, page 3, data row 2**. The demo uses a regex count for reproducibility.
 
 ```python
 import json

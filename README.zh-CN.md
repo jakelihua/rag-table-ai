@@ -70,7 +70,7 @@ assert engine.calculate("18.00 × 80%") == "14.40"
 python examples/04_mineru_pipeline.py
 ```
 
-示例读取[合成的 MinerU Content List V1](examples/fixtures/shipping_content_list.json)，其中有两层表头和合并单元格。切成 4 个分片后仍覆盖全部 10 个逻辑数据单元格。查询 15 kg 加急运费，八折后得到 **USD 14.40**，可引用 **shipping.pdf 第 3 页、表内第 2 条数据行**。示例使用固定的正则计数规则，方便复现。
+[MinerU 示例](examples/04_mineru_pipeline.py)读取[合成的 MinerU Content List V1](examples/fixtures/shipping_content_list.json)，其中有两层表头和合并单元格。切成 4 个分片后仍覆盖全部 10 个逻辑数据单元格。查询 15 kg 加急运费，八折后得到 **USD 14.40**，可引用 **shipping.pdf 第 3 页、表内第 2 条数据行**。示例使用固定的正则计数规则，方便复现。
 
 ```python
 import json
