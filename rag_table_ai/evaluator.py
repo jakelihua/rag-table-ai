@@ -60,6 +60,10 @@ def _split_function_segments(expr: str) -> list[tuple[bool, str]]:
             prev = idx - 1
             while prev >= 0 and expr[prev].isspace():
                 prev -= 1
+            if prev >= 0 and expr[prev] == ")":
+                # AST drops parentheses around call targets. Reject them before
+                # a function argument comma can be treated as a thousands comma.
+                raise ValueError("Function calls require a bare function name.")
             ident_end = prev + 1
             while prev >= 0 and (expr[prev].isalnum() or expr[prev] == "_"):
                 prev -= 1
@@ -89,11 +93,11 @@ def normalize_expression(expression: str) -> str:
     if not isinstance(expression, str):
         raise TypeError("Expression must be a string.")
 
+    if len(expression) > MAX_EXPRESSION_LENGTH:
+        raise ValueError(f"Expression exceeds maximum length of {MAX_EXPRESSION_LENGTH} characters.")
     expr = expression.strip()
     if not expr:
         return ""
-    if len(expr) > MAX_EXPRESSION_LENGTH:
-        raise ValueError(f"Expression exceeds maximum length of {MAX_EXPRESSION_LENGTH} characters.")
 
     for fw, hw in _FULLWIDTH_MAP.items():
         expr = expr.replace(fw, hw)
@@ -115,9 +119,7 @@ def normalize_expression(expression: str) -> str:
                 )
             cleaned = _THOUSANDS_RE.sub(_strip_thousands, segment)
             if "," in cleaned:
-                raise ValueError(
-                    f"Ambiguous or invalid comma outside function arguments in '{expression}'."
-                )
+                raise ValueError("Ambiguous or invalid comma outside function arguments.")
             normalized_parts.append(cleaned)
 
     expr = "".join(normalized_parts)
@@ -142,7 +144,9 @@ def _bounded(value: Fraction) -> Fraction:
 
 
 def _parse_literal(text: str) -> Fraction:
-    if not text or len(text) > MAX_NUMERIC_LENGTH or not _NUMBER_LITERAL_RE.fullmatch(text):
+    if len(text) > MAX_NUMERIC_LENGTH:
+        raise ValueError(f"Numeric literal exceeds maximum length of {MAX_NUMERIC_LENGTH} characters.")
+    if not _NUMBER_LITERAL_RE.fullmatch(text):
         raise ValueError(f"Invalid numeric literal: {text!r}")
 
     mantissa, _, exp_part = text.lower().partition("e")
@@ -321,5 +325,5 @@ def calculate_decimal_safe(expression: str, max_places: int = 4) -> str:
         body = _parse_expression_ast(clean_expr)
         result = _RationalEvaluator(clean_expr).evaluate(body)
         return _format_fraction(result, max_places=max_places)
-    except (TypeError, ValueError, ZeroDivisionError, ArithmeticError) as exc:
-        raise ValueError(f"Failed to evaluate arithmetic expression '{expression}': {exc}") from exc
+    except (TypeError, ValueError, ArithmeticError) as exc:
+        raise ValueError(f"Failed to evaluate arithmetic expression: {exc}") from exc

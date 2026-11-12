@@ -62,7 +62,7 @@ assert engine.calculate("18.00 × 80%") == "14.40"
 | 表格输入 | 单层表头，或按[示例约定](examples/01_quickstart.py)填写的双层表头。父级的空白单元格沿用左侧父级名称。也支持含合并单元格的 HTML 表格。PDF 和图片交给上游抽取。无分隔行且包含全短横线数据行的表格，请传 `has_separator=False`。 |
 | 切片 | 按数据行数和可选 token 预算切分，每片重复列名，并记录从 1 开始的表内行范围和列号。超宽数据行抛出 `ValueError`，短行在右侧补空。 |
 | 区间匹配 | 支持带正负号的整数和小数闭区间、标准千分位逗号及常见单位和币种代码。显式单位须一致，裸数字沿用区间单位。输入为 `15 kg` 这样的数值或文本标签。无法解析的数值文本只做全等比较。 |
-| 算式求值 | 受限精确有理数求值（`+`、`-`、`*`、`/`、`min`、`max`、`abs`、`round`）、百分号及常见全角运算符。函数外支持标准千分位逗号，函数内逗号按参数分隔解析；输出四舍五入，不依赖全局 `Decimal` 上下文。 |
+| 算式求值 | 受限精确有理数求值（`+`、`-`、`*`、`/`、`min`、`max`、`abs`、`round`）、百分号及常见全角运算符。函数外支持标准千分位逗号，函数内逗号用于分隔参数。直接使用函数名调用，例如 `min(1, 2)`。原始输入最多 2,048 个字符，输出四舍五入，无需依赖全局 `Decimal` 上下文。 |
 
 ## 接入 MinerU 和 HTML 表格
 
@@ -100,7 +100,7 @@ assert all(chunk.metadata["page_number"] == 3 for chunk in chunks)
 - **输入格式。**传入扁平的 MinerU Content List V1。适配器从 `table_body` 或 `html` 读取表格，跳过其他块，并保留原文档标识、表题、脚注，以及可用的页码和边界框。单独的 HTML 表格可用 `split_html_table()`。[MinerU 输出文档](https://opendatalab.github.io/MinerU/reference/output_files/)
 - **表头识别。**先展开正整数的 `rowspan` 和 `colspan`，再按 `thead`、开头连续的全 `th` 行或首行识别表头。表头中的 `th` 可与空白 `td` 同行。混合表头有歧义，或多层表头全部用 `td` 时，通过 `header_rows_by_block` 指定，键是输入列表中从 0 开始的块索引。直接处理 HTML 时传 `header_rows`。嵌套表格、非矩形网格、非法跨度或没有数据行的表格会报错。
 - **切片预算。**同时传入 `max_tokens` 和确定性的 `count_tokens(text)`，例如 `lambda text: len(tokenizer.encode(text))`。计数覆盖完整的 `markdown_text`，包括表题和表头。单行过宽时，`repeat_columns=(1,)` 允许分列并重复第 1 列作为行标识。传 `()` 可分列但不重复列，传 `None` 则明确报超限。最小分组仍放不下时抛出 `ValueError`。分列时，最多 32 个非标识列会按切完后的分片数和文本总量选择列组。超过 32 个非标识列或用完 4,096 次候选计数时，回退到贪心分组。
-- **来源与坐标。**`start_row`、`end_row`、`column_indices` 都是从 1 开始的表内逻辑坐标。完整表头路径存于 `header_paths`，分片列通过 `column_indices` 对应到原表。`page_idx` 从 0 开始，引用用从 1 开始的 `page_number`。对于 HTML，直接用 `chunk.rows` 和 `chunk.headers` 读取解码后的值，用 `markdown_text` 建索引。适配器保留 MinerU 给出的**表级**边界框，各表格块独立处理。
+- **来源与坐标。**`start_row`、`end_row`、`column_indices` 都是从 1 开始的表内逻辑坐标。整张表的表头路径以不可变的嵌套元组存于 `header_paths`。分片列通过 `column_indices` 对应到原表。`page_idx` 从 0 开始，引用用从 1 开始的 `page_number`。对于 HTML，直接用 `chunk.rows` 和 `chunk.headers` 读取解码后的值，用 `markdown_text` 建索引。适配器保留 MinerU 给出的**表级**边界框，各表格块独立处理。
 
 ## 如何评估
 

@@ -47,6 +47,7 @@ def test_calculate_decimal_safe():
     assert calculate_decimal_safe("abs(-12.345)", max_places=4) == "12.345"
     assert calculate_decimal_safe("round(2.345, 2)") == "2.35"
     assert calculate_decimal_safe("round((1 / 3) * 3 - 0.5)") == "1.00"
+    assert calculate_decimal_safe("round((1234 + abs(-1)) / 10, 2)") == "123.50"
 
 
 def test_high_precision_literals_bypass_float_truncation():
@@ -87,3 +88,30 @@ def test_invalid_expressions_and_zero_division_raise_value_error():
     ]:
         with pytest.raises(ValueError):
             calculate_decimal_safe(bad_expr)
+
+
+@pytest.mark.parametrize("expression", [
+    "(abs)(1,234)",
+    "((round)) (1,234)",
+    "max(2, （abs）（1，234）)",
+])
+def test_parenthesized_call_targets_are_rejected_before_comma_normalization(expression):
+    with pytest.raises(ValueError, match="bare function name"):
+        normalize_expression(expression)
+    with pytest.raises(ValueError, match="bare function name"):
+        calculate_decimal_safe(expression)
+
+
+@pytest.mark.parametrize(("expression", "limit"), [
+    (" " * 100_000 + "1", 2048),
+    ("9" * 100_000, 2048),
+    ("9" * 129, 128),
+])
+def test_input_limits_are_enforced_without_echoing_overlong_values(expression, limit):
+    with pytest.raises(ValueError, match=f"maximum length of {limit}") as error:
+        calculate_decimal_safe(expression)
+    assert len(str(error.value)) < 200
+
+
+def test_expression_at_exact_raw_length_limit_is_accepted():
+    assert calculate_decimal_safe(" " * 2047 + "1") == "1.00"

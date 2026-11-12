@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "rag-table-ai"
-version = "0.1.0"
+version = "0.2.0"
 description = "Header-preserving table chunking and evidence lookup for RAG, with MinerU HTML and token-budget support."
 readme = "README.md"
 authors = [

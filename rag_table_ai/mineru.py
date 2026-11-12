@@ -52,7 +52,7 @@ def split_mineru_content_list(
                 raise ValueError("Expected an HTML table in table_body or html.")
             caption = " ".join(_text_parts(block.get("table_caption"), "table_caption"))
             footnotes = _text_parts(block.get("table_footnote"), "table_footnote")
-            metadata = {"source": source, "mineru_block_index": index, "table_footnotes": footnotes}
+            metadata = {"source": source, "mineru_block_index": index}
             page_idx = block.get("page_idx")
             if page_idx is not None:
                 if type(page_idx) is not int or page_idx < 0:
@@ -65,16 +65,20 @@ def split_mineru_content_list(
                     for coord in bbox
                 ):
                     raise ValueError("bbox must contain four finite numeric coordinates.")
-                metadata["bbox"] = bbox.copy()
 
-            chunks.extend(split_html_table(
+            table_chunks = split_html_table(
                 body,
                 chunker=chunker,
                 table_id=f"{source}#table-{index + 1}",
                 caption=caption,
                 header_rows=header_overrides.get(index),
                 source_metadata=metadata,
-            ))
+            )
+            for chunk in table_chunks:
+                chunk.metadata["table_footnotes"] = footnotes.copy()
+                if bbox is not None:
+                    chunk.metadata["bbox"] = bbox.copy()
+            chunks.extend(table_chunks)
         except ValueError as exc:
             raise ValueError(f"MinerU table block {index} in {source}: {exc}") from exc
     return chunks

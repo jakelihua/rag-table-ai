@@ -21,7 +21,7 @@ def test_mineru_merged_headers_and_source_metadata():
         "Weight", "Rate (USD) / Standard", "Rate (USD) / Express",
         "Transit (days) / Standard", "Transit (days) / Express",
     ]
-    assert second.metadata["header_paths"][2] == ["Rate (USD)", "Express"]
+    assert second.metadata["header_paths"][2] == ("Rate (USD)", "Express")
     assert second.metadata["source"] == "shipping.pdf"
     assert second.metadata["page_idx"] == 2
     assert second.metadata["page_number"] == 3
@@ -117,8 +117,32 @@ def test_html_keeps_decoded_values_separate_from_markdown_and_uses_caption_fallb
     }], source="test.pdf")
     chunk = chunks[0]
     assert chunk.headers == ["Dept & Group"]
-    assert chunk.metadata["header_paths"] == [["Dept & Group"]]
+    assert chunk.metadata["header_paths"] == (("Dept & Group",),)
     assert chunk.rows == [["R&D"]]
     assert match_interval(chunk.rows[0][0], "R&D")
     assert chunk.markdown_text.splitlines()[1] == "| Dept &amp; Group |"
     assert chunk.metadata["caption"] == "Real"
+
+
+def test_mineru_chunks_own_mutable_provenance_fields():
+    block = {
+        "type": "table",
+        "html": "<table><tr><th>Rate</th></tr><tr><td>1</td></tr><tr><td>2</td></tr></table>",
+        "page_idx": 3,
+        "bbox": [10, 20, 30, 40],
+        "table_footnote": ["Rate in USD"],
+    }
+    first, second = split_mineru_content_list(
+        [block], source="rates.pdf", chunker=SourceAwareTableChunker(max_rows_per_chunk=1),
+    )
+
+    with pytest.raises(TypeError):
+        first.metadata["header_paths"][0][0] = "Changed"
+    first.metadata["header_paths"] = (("Local override",),)
+    first.metadata["bbox"][0] = 99
+    first.metadata["table_footnotes"].append("Extra note")
+
+    assert second.metadata["header_paths"] == (("Rate",),)
+    assert second.metadata["bbox"] == block["bbox"] == [10, 20, 30, 40]
+    assert second.metadata["table_footnotes"] == block["table_footnote"] == ["Rate in USD"]
+    assert second.metadata["page_number"] == 4

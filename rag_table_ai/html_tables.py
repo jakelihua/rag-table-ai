@@ -203,7 +203,7 @@ def split_html_table(
     header_count = _header_count(parser.rows, header_rows)
     grid = _expand_grid(parser.rows, header_count)
 
-    paths = []
+    paths: list[tuple[str, ...]] = []
     for col in range(len(grid[0])):
         path = []
         previous = None
@@ -212,7 +212,7 @@ def split_html_table(
             if cell is not previous and cell.text:
                 path.append(cell.text)
             previous = cell
-        paths.append(path or [f"Column_{col + 1}"])
+        paths.append(tuple(path) or (f"Column_{col + 1}",))
 
     headers = [" / ".join(path) for path in paths]
     # Spans share a _Cell instance. Normalize its text once for the whole grid.
@@ -232,7 +232,7 @@ def split_html_table(
         rows,
         table_id=table_id,
         caption=caption.strip() or " ".join("".join(parser.caption).split()),
-        source_metadata={**(source_metadata or {}), "header_paths": paths},
+        source_metadata={**(source_metadata or {}), "header_paths": tuple(paths)},
     )
     for chunk in chunks:
         columns = [column - 1 for column in chunk.metadata["column_indices"]]

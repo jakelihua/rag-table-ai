@@ -10,7 +10,7 @@ from rag_table_ai.html_tables import split_html_table
 from rag_table_ai.intervals import expand_interval_hint, extract_range, match_interval
 from rag_table_ai.mineru import split_mineru_content_list
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = [
     "RagTableAI",
     "SourceAwareTableChunker",
