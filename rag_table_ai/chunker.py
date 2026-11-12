@@ -1,21 +1,11 @@
-"""Source-Aware Table Chunking for RAG pipelines.
-
-Solves the classic RAG table truncation disaster:
-When a 100-row table is split into multiple chunks, subsequent chunks lose their headers,
-leaving LLMs completely blind to column meanings.
-
-SourceAwareTableChunker guarantees:
-1. Every chunk inherits the verified full headers (repeated headers).
-2. Physical row tracking: start_row and end_row metadata are preserved.
-3. Zero silent row dropping: 100% data conservation.
-"""
+"""Split pipe tables into chunks with column labels and table-relative row ranges."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
 
-from rag_table_ai.headers import is_markdown_separator, resolve_composite_headers
+from rag_table_ai.headers import resolve_composite_headers
 
 
 @dataclass
@@ -43,13 +33,9 @@ class SourceAwareTableChunker:
     ) -> list[TableChunk]:
         """Split a Markdown table into self-contained TableChunk instances.
 
-        Each chunk carries the complete header row and markdown table formatting.
+        Each chunk carries the resolved header and a 1-based inclusive data-row range.
         """
-        lines = [ln.strip() for ln in table_markdown.strip().split("\n") if ln.strip()]
-        if not lines:
-            return []
-
-        headers, data_rows = resolve_composite_headers(lines)
+        headers, data_rows = resolve_composite_headers(table_markdown.splitlines())
         if not headers or not data_rows:
             return []
 
@@ -74,7 +60,7 @@ class SourceAwareTableChunker:
 
             for row in slice_rows:
                 padded = row + [""] * (len(headers) - len(row))
-                chunk_lines.append("| " + " | ".join(padded[: len(headers)]) + " |")
+                chunk_lines.append("| " + " | ".join(padded) + " |")
 
             chunk_md = "\n".join(chunk_lines)
             chunks.append(
@@ -83,7 +69,7 @@ class SourceAwareTableChunker:
                     total_chunks=total_chunks,
                     start_row=start + 1,
                     end_row=end,
-                    headers=headers,
+                    headers=headers.copy(),
                     markdown_text=chunk_md,
                     metadata={
                         "table_id": table_id,

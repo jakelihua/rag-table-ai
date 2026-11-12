@@ -1,14 +1,6 @@
-"""Deterministic semantic table linearization (Chain-of-Table flattening).
-
-Transforms 2D matrix grids into natural, unambiguous key-value tuples.
-Eliminates LLM cross-row/cross-column visual misalignment and hallucination
-without incurring any extra LLM API call or latency.
-"""
+"""Render pipe-table rows as named fields for retrieval and display."""
 
 from __future__ import annotations
-
-import re
-from typing import Any
 
 from rag_table_ai.headers import is_markdown_separator, resolve_composite_headers
 from rag_table_ai.intervals import expand_interval_hint
@@ -46,6 +38,8 @@ def flatten_table_chunk(
     if "|" not in text:
         return text
 
+    limit = max(0, max_table_rows)
+    hint = (query_hint or "").strip()
     lines = text.split("\n")
     output_parts: list[str] = []
     i = 0
@@ -70,7 +64,7 @@ def flatten_table_chunk(
 
             # Look back up to 10 lines for title/caption/preceding context
             caption = ""
-            for back_offset in range(1, min(10, start_i + 1)):
+            for back_offset in range(1, min(10, start_i) + 1):
                 prev = lines[start_i - back_offset].strip()
                 if prev.startswith("|"):
                     break
@@ -86,37 +80,29 @@ def flatten_table_chunk(
                 output_parts.extend(table_lines)
                 continue
 
-            # Apply large table guard if row count exceeds max_table_rows
             total_rows = len(data_rows)
-            selected_rows = data_rows
-            is_truncated = False
-
-            if total_rows > max_table_rows:
-                is_truncated = True
-                kw = (query_hint or "").strip()
-                scored_indices: list[int] = []
+            selected_indices: range | list[int] = range(min(total_rows, limit))
+            if total_rows > limit and limit and hint:
+                matches = []
                 for idx, row in enumerate(data_rows):
-                    row_str = " ".join(row)
-                    if kw and kw in row_str:
-                        scored_indices.append(idx)
-
-                if scored_indices:
-                    # Keep matched rows + adjacent neighborhood + first 2 rows
-                    keep = set(range(min(2, total_rows)))
-                    for idx in scored_indices[:max_table_rows]:
-                        for delta in (-1, 0, 1):
-                            if 0 <= idx + delta < total_rows:
-                                keep.add(idx + delta)
-                    selected_indices = sorted(list(keep))[:max_table_rows]
-                    selected_rows = [data_rows[idx] for idx in selected_indices]
-                else:
-                    selected_rows = data_rows[:max_table_rows]
+                    if hint in " ".join(row):
+                        matches.append(idx)
+                        if len(matches) == limit:
+                            break
+                if matches:
+                    selected = set(matches)
+                    for idx in matches:
+                        for neighbor in (idx - 1, idx + 1):
+                            if len(selected) < limit and 0 <= neighbor < total_rows:
+                                selected.add(neighbor)
+                    selected_indices = sorted(selected)
 
             # Linearize table into key-value pairs
             header_prefix = f"### Structured Table: {caption or source or 'Table'}\n"
             table_kvs: list[str] = [header_prefix]
 
-            for row_idx, row in enumerate(selected_rows, 1):
+            for row_idx in selected_indices:
+                row = data_rows[row_idx]
                 kv_pairs: list[str] = []
                 for col_idx, h in enumerate(headers):
                     val = row[col_idx] if col_idx < len(row) else ""
@@ -124,11 +110,11 @@ def flatten_table_chunk(
                     if col_idx == 0:
                         norm_val = expand_interval_hint(norm_val)
                     kv_pairs.append(f"{h}: {norm_val}")
-                table_kvs.append(f"- [Row {row_idx}] " + " | ".join(kv_pairs))
+                table_kvs.append(f"- [Row {row_idx + 1}] " + " | ".join(kv_pairs))
 
-            if is_truncated:
+            if total_rows > limit:
                 table_kvs.append(
-                    f"\n*(Table truncated: showing {len(selected_rows)} of {total_rows} rows)*"
+                    f"\n*(Table truncated: showing {len(selected_indices)} of {total_rows} rows)*"
                 )
 
             output_parts.append("\n".join(table_kvs))

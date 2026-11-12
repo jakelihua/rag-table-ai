@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "rag-table-ai"
 version = "0.1.0"
-description = "专为解决大模型与 RAG 超复杂表格解析难题而生的确定性引擎 | Deterministic complex table parsing & chunking engine for RAG & AI Agents"
+description = "Header-preserving table chunking and numeric lookup helpers for RAG."
 readme = "README.md"
 authors = [
     { name = "Jake Lihua", email = "jakelihua@gmail.com" }
@@ -28,12 +28,11 @@ classifiers = [
 keywords = [
     "rag",
     "llm",
-    "table-extraction",
+    "document-processing",
     "table-chunking",
     "agentic-rag",
     "deterministic-ai",
     "markdown-tables",
-    "langchain",
 ]
 
 dependencies = []

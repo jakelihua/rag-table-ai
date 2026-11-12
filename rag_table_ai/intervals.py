@@ -1,87 +1,111 @@
-"""Universal numeric and discrete range matching.
-
-Enables LLMs and retrievers to match discrete user query numbers
-(e.g., '78 years old', '78岁', '15kg', '$350', '3 years') against tabular range cells
-(e.g., '76周岁-80周岁', '10kg - 20kg', '$100 - $500', '1~3 years').
-"""
+"""Match numeric quantities against closed intervals in table cells."""
 
 from __future__ import annotations
 
 import re
+from decimal import Decimal
 
-_RANGE_PATTERN = re.compile(
-    r"(?:[A-Za-z\u4e00-\u9fa5$¥€%]+\s*)?(\d{1,10})\s*(?:[A-Za-z\u4e00-\u9fa5$¥€%]+)?(?:\([^)]*\))?\s*[-—~至到–]\s*(?:[A-Za-z\u4e00-\u9fa5$¥€%]+\s*)?(\d{1,10})\s*(?:[A-Za-z\u4e00-\u9fa5$¥€%]+)?"
+_NUMBER = r"[+\-−]?[0-9]{1,64}(?:\.[0-9]{1,64})?"
+_UNIT = r"[A-Za-z]+(?:\s+old)?|[\u4e00-\u9fff]+|%"
+_QUANTITY = rf"[$¥€£]?\s*{_NUMBER}(?:\s*(?:{_UNIT}))?"
+_QUANTITY_RE = re.compile(
+    rf"(?P<currency>[$¥€£])?\s*(?P<number>{_NUMBER})(?:\s*(?P<unit>{_UNIT}))?",
+    re.IGNORECASE,
 )
-_DIGITS_PATTERN = re.compile(r"\d+")
+_RANGE_RE = re.compile(
+    rf"(?P<low>{_QUANTITY})\s*[-–—~至到]\s*(?P<high>{_QUANTITY})",
+    re.IGNORECASE,
+)
+_LABELED_RANGE_RE = re.compile(r"[^()]+\(([^()]+)\)")
+_UNIT_ALIASES = {
+    "周岁": "岁",
+    "year": "岁",
+    "years": "岁",
+    "year old": "岁",
+    "years old": "岁",
+}
 
 
-def extract_range(text: str) -> tuple[int, int] | None:
-    """Extract numeric lower and upper bounds from a range string.
-
-    Examples:
-        '76周岁-80周岁' -> (76, 80)
-        '10kg~20kg' -> (10, 20)
-        '100-500' -> (100, 500)
-    """
-    m = _RANGE_PATTERN.search(text)
-    if not m:
+def _parse_quantity(text: str) -> tuple[int | Decimal, str] | None:
+    match = _QUANTITY_RE.fullmatch(text.strip())
+    if match is None:
         return None
-    try:
-        low, high = int(m.group(1)), int(m.group(2))
-        return (min(low, high), max(low, high))
-    except (ValueError, TypeError):
+    currency = match["currency"]
+    suffix = " ".join((match["unit"] or "").split())
+    if currency and suffix:
         return None
+    unit = currency or _UNIT_ALIASES.get(suffix.lower(), suffix)
+    number = match["number"].replace("−", "-")
+    return (Decimal(number) if "." in number else int(number), unit)
+
+
+def _parse_range(text: str) -> tuple[int | Decimal, int | Decimal, str] | None:
+    text = text.strip()
+    labeled = _LABELED_RANGE_RE.fullmatch(text)
+    if labeled:
+        text = labeled[1].strip()
+    text = re.sub(r"以上(?=\s*[至到])", "", text)
+    match = _RANGE_RE.fullmatch(text)
+    if match is None:
+        return None
+    left = _parse_quantity(match["low"])
+    right = _parse_quantity(match["high"])
+    if left is None or right is None:
+        return None
+    low, left_unit = left
+    high, right_unit = right
+    if low > high or (left_unit and right_unit and left_unit != right_unit):
+        return None
+    return low, high, left_unit or right_unit
+
+
+def extract_range(text: str) -> tuple[int | Decimal, int | Decimal] | None:
+    """Return ordered bounds for a supported closed interval."""
+    parsed = _parse_range(text)
+    return None if parsed is None else (parsed[0], parsed[1])
 
 
 def match_interval(cell_text: str, query_text: str) -> bool:
-    """Check if query_text matches cell_text either literally or numerically.
+    """Match a point to a range, or perform a literal match for text labels.
 
-    Returns True if:
-      1. query_text is a substring of cell_text (or vice-versa),
-      2. or query_text contains a single integer that falls within the numeric range of cell_text.
+    Bare numbers inherit the range unit. Explicit units must agree after
+    alias normalization. A query is a quantity, such as "15 kg", rather
+    than a sentence from which this helper should extract a quantity.
     """
-    norm_cell = re.sub(r"[\s_]", "", cell_text)
-    norm_query = re.sub(r"[\s_]", "", query_text)
+    cell = cell_text.strip()
+    query = query_text.strip()
+    if not cell or not query:
+        return False
 
+    bounds = _parse_range(cell)
+    point = _parse_quantity(query)
+    if bounds is not None:
+        if point is None:
+            return False
+        low, high, unit = bounds
+        value, query_unit = point
+        return (not query_unit or query_unit == unit) and low <= value <= high
+
+    cell_point = _parse_quantity(cell)
+    if cell_point is not None or point is not None:
+        return cell_point == point
+
+    norm_cell = re.sub(r"[\s_]", "", cell)
+    norm_query = re.sub(r"[\s_]", "", query)
     if not norm_cell or not norm_query:
         return False
-
-    if norm_query in norm_cell or norm_cell in norm_query:
-        return True
-
-    # Numeric interval check
-    cell_range = extract_range(norm_cell)
-    if not cell_range:
-        return False
-
-    query_digits = _DIGITS_PATTERN.findall(norm_query)
-    if len(query_digits) == 1:
-        try:
-            val = int(query_digits[0])
-            low, high = cell_range
-            return low <= val <= high
-        except ValueError:
-            return False
-
-    return False
+    return norm_query in norm_cell or norm_cell in norm_query
 
 
 def expand_interval_hint(cell_text: str, max_expanded: int = 12) -> str:
-    """If cell_text is a compact range with <= max_expanded discrete steps,
-
-    expand it into an explicit semantic hint for zero-shot LLM comprehension.
-
-    Example:
-        '76-80岁' -> '76-80岁 [covers: 76, 77, 78, 79, 80]'
-    """
-    rng = extract_range(cell_text)
-    if not rng:
+    """Append a bounded list of integer points for a short integer interval."""
+    bounds = extract_range(cell_text)
+    if bounds is None:
         return cell_text
-
-    low, high = rng
-    span = high - low + 1
-    if 1 < span <= max_expanded:
-        items = [str(x) for x in range(low, high + 1)]
-        return f"{cell_text} [covers: {', '.join(items)}]"
-
+    low, high = bounds
+    if not isinstance(low, int) or not isinstance(high, int):
+        return cell_text
+    if 1 < high - low + 1 <= max_expanded:
+        items = ", ".join(str(value) for value in range(low, high + 1))
+        return f"{cell_text} [covers: {items}]"
     return cell_text

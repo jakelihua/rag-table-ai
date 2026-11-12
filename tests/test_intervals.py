@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from rag_table_ai.intervals import expand_interval_hint, extract_range, match_interval
 
 
@@ -34,3 +36,23 @@ def test_expand_interval_hint():
     # Not expanded if span is too wide
     not_expanded = expand_interval_hint("1-1000岁", max_expanded=10)
     assert "covers" not in not_expanded
+
+
+def test_numeric_matching_checks_units_signs_and_bounds():
+    assert match_interval("10–20 kg", "15 kg")
+    assert not match_interval("10–20 kg", "15 lb")
+    assert not match_interval("10–20 kg", "-15 kg")
+    assert not match_interval("10–20 kg", "0")
+    assert not match_interval("10–20 kg", "1 5")
+    assert not match_interval("10 kg–20 lb", "15 kg")
+    assert not match_interval("10–20 mW", "15 MW")
+    assert not match_interval("$100–$500", "€350")
+    assert match_interval("−10–−5 kg", "-7 kg")
+
+
+def test_decimal_range_uses_whole_bounds():
+    assert extract_range("1.5–2.5 kg") == (Decimal("1.5"), Decimal("2.5"))
+    assert match_interval("1.5–2.5 kg", "2.5 kg")
+    assert not match_interval("1.5–2.5 kg", "2.5001 kg")
+    assert extract_range("2.5–1.5 kg") is None
+    assert expand_interval_hint("1.5–2.5 kg") == "1.5–2.5 kg"

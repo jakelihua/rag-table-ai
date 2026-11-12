@@ -1,12 +1,6 @@
-"""rag-table-ai: The deterministic, zero-LLM table chunking and semantic linearization engine.
-
-Solves multi-level headers, interval matching, and cross-chunk table fragmentation
-for RAG and AI Agents without extra LLM token cost or hallucination.
-"""
+"""Header-preserving table chunking and numeric lookup helpers for RAG."""
 
 from __future__ import annotations
-
-from typing import Any
 
 from rag_table_ai.chunker import SourceAwareTableChunker, TableChunk
 from rag_table_ai.evaluator import calculate_decimal_safe, normalize_expression
@@ -45,7 +39,7 @@ class RagTableAI:
         source: str = "",
         query_hint: str | None = None,
     ) -> str:
-        """Linearize 2D Markdown tables into semantic key-value tuples (Chain-of-Table format)."""
+        """Render Markdown table rows as named fields."""
         return flatten_table_chunk(
             text=markdown_text,
             source=source,
@@ -67,7 +61,7 @@ class RagTableAI:
         )
 
     def match(self, cell_text: str, query_text: str) -> bool:
-        """Check if query matches cell text (including continuous and discrete intervals)."""
+        """Match a quantity against a closed interval or match a text label."""
         return match_interval(cell_text, query_text)
 
     def calculate(self, expression: str, max_places: int = 4) -> str:

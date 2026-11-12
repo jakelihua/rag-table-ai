@@ -45,3 +45,10 @@ def test_large_table_truncation_guard():
     flattened = flatten_table_chunk(md, max_table_rows=10, query_hint="Item_25")
     assert "Table truncated: showing" in flattened
     assert "Item_25" in flattened
+
+
+def test_truncation_retains_matches_and_table_row_numbers():
+    table = "| Item |\n| --- |\n| first |\n| second |\n| third |\n| TARGET |"
+    flattened = flatten_table_chunk(table, max_table_rows=1, query_hint="TARGET")
+    assert "[Row 4] Item: TARGET" in flattened
+    assert "showing 1 of 4 rows" in flattened

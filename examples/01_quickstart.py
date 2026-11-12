@@ -12,7 +12,7 @@ from rag_table_ai import RagTableAI
 # 1. Initialize the engine
 rag_table = RagTableAI()
 
-# 2. Markdown table with multi-tier composite headers & intervals
+# 2. Markdown table with two-tier composite headers & intervals
 sample_markdown = """
 ### Global Cloud Instance Pricing
 | Instance Class | On-Demand (Hourly) | | 1-Year Reserved (Monthly) | |
@@ -23,7 +23,7 @@ sample_markdown = """
 | Memory (32-64 vCPU) | $0.768 | $0.992 | $384.00 | $496.00 |
 """
 
-# 3. Linearize 2D matrix into semantic key-value tuples (Chain-of-Table format)
+# 3. Linearize 2D matrix into semantic key-value tuples
 flattened = rag_table.flatten(sample_markdown)
 print("=== Linearized Table Output ===")
 print(flattened)
