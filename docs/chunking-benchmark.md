@@ -24,8 +24,8 @@ mineru -p demo1.pdf -o mineru-output -b pipeline -m txt -f false -t true -s 0 -e
 From the repository root, install the package, then run the same measurement with both versions. The demo export used table block index 79. Use the index of the block with caption `Coefficient of efficiency, E` if your export orders the blocks differently.
 
 ```bash
-python -m pip install -e .
-python -m pip install tiktoken  # Optional for token budgets.
+python -m pip install .
+python -m pip install tiktoken==0.13.0  # Optional for token budgets.
 git worktree add --detach ../rag-table-ai-baseline 7c2f5b9
 
 export_file=mineru-output/demo1/txt/demo1_content_list.json
