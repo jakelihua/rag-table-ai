@@ -62,7 +62,7 @@ The [shipping demo](examples/03_shipping_rates.py) selects the matching tier and
 | Table input | Pipe tables with one header row or the [two-row convention](examples/01_quickstart.py), and individual HTML tables with merged cells. Extract PDFs and images upstream. For delimiterless pipe tables with dash-only rows, pass `has_separator=False`. |
 | Chunking | Splits by row count and an optional token budget. Chunks repeat resolved column labels and expose inclusive, 1-based table row and column coordinates. Over-wide data rows raise `ValueError`; short rows are padded on the right. |
 | Range matching | Closed ranges of signed integers or decimals, with standard comma grouping and common units and currency codes. Explicit units must agree; there is no unit conversion. A bare number inherits the range's unit. Pass a quantity such as `15 kg` or a text label. Unparsed numeric text is compared only as an exact label. |
-| Arithmetic | Restricted arithmetic with Decimal evaluation, percentages, and common full-width operators. The caller provides the expression. Check rounding and input conventions for your use case. |
+| Arithmetic | Restricted exact rational arithmetic (`+`, `-`, `*`, `/`, `min`, `max`, `abs`, `round`), percentages, and common full-width operators. Thousand commas are stripped outside function calls; inside function calls, commas separate arguments. Rounded half-up on output without relying on global `Decimal` context. |
 
 ## MinerU and HTML tables
 
