@@ -1,5 +1,6 @@
 import pytest
 
+from rag_table_ai import split_table_row
 from rag_table_ai.chunker import SourceAwareTableChunker
 
 
@@ -41,3 +42,41 @@ def test_chunker_keeps_escaped_pipes_and_dash_values():
     assert [chunk.start_row for chunk in chunks] == [1, 2]
     assert chunks[0].markdown_text.endswith("| A \\| B | 1 |")
     assert chunks[1].markdown_text.endswith("| - | - |")
+
+
+def test_budget_counts_rendered_headers_and_caption():
+    table = "| Item | Cost |\n| --- | --- |\n| A | 1 |\n| B | 2 |\n| C | 3 |"
+    chunker = SourceAwareTableChunker(max_tokens=49, count_tokens=len)
+    chunks = chunker.split_table(table, caption="Rates")
+    assert [(c.start_row, c.end_row) for c in chunks] == [(1, 1), (2, 2), (3, 3)]
+    assert all(c.markdown_text.startswith("### Rates\n| Item | Cost |") for c in chunks)
+    assert all(len(c.markdown_text) <= 49 for c in chunks)
+
+
+def test_wide_budget_repeats_key_and_preserves_original_columns():
+    headers = ["Key", "First", "Second", "Third"]
+    rows = [["A", "a" * 16, "b" * 16, "c" * 16], ["B", "d" * 16, "e" * 16, "f" * 16]]
+    budget = 70
+    chunker = SourceAwareTableChunker(max_tokens=budget, count_tokens=len, repeat_columns=(1,))
+    chunks = chunker.split_rows(headers, rows)
+
+    reconstructed = {}
+    for chunk in chunks:
+        assert len(chunk.markdown_text) <= budget
+        assert chunk.metadata["column_indices"][0] == 1
+        for row_idx, line in enumerate(chunk.markdown_text.splitlines()[2:], chunk.start_row):
+            for col_idx, cell in zip(chunk.metadata["column_indices"], split_table_row(line)):
+                reconstructed[row_idx, col_idx] = cell
+    assert reconstructed == {
+        (row_idx, col_idx): cell
+        for row_idx, row in enumerate(rows, 1)
+        for col_idx, cell in enumerate(row, 1)
+    }
+
+
+def test_budget_overflow_never_silently_emits_a_partial_row():
+    table = "| Key | Detail |\n| --- | --- |\n| A | " + "x" * 80 + " |"
+    with pytest.raises(ValueError, match="Data row 1 exceeds"):
+        SourceAwareTableChunker(max_tokens=65, count_tokens=len).split_table(table)
+    with pytest.raises(ValueError, match="Column 2 with repeated columns exceeds"):
+        SourceAwareTableChunker(max_tokens=65, count_tokens=len, repeat_columns=(1,)).split_table(table)

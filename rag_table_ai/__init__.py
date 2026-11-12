@@ -6,13 +6,17 @@ from rag_table_ai.chunker import SourceAwareTableChunker, TableChunk
 from rag_table_ai.evaluator import calculate_decimal_safe, normalize_expression
 from rag_table_ai.flattener import encode_cell_state, flatten_table_chunk
 from rag_table_ai.headers import is_markdown_separator, resolve_composite_headers, split_table_row
+from rag_table_ai.html_tables import split_html_table
 from rag_table_ai.intervals import expand_interval_hint, extract_range, match_interval
+from rag_table_ai.mineru import split_mineru_content_list
 
 __version__ = "0.1.0"
 __all__ = [
     "RagTableAI",
     "SourceAwareTableChunker",
     "TableChunk",
+    "split_html_table",
+    "split_mineru_content_list",
     "flatten_table_chunk",
     "resolve_composite_headers",
     "split_table_row",

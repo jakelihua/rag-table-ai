@@ -1,0 +1,15 @@
+[
+  {
+    "type": "text",
+    "text": "Domestic shipping",
+    "page_idx": 2
+  },
+  {
+    "type": "table",
+    "table_body": "<table><tr><td rowspan=\"2\">Weight</td><td colspan=\"2\">Rate (USD)</td><td colspan=\"2\">Transit (days)</td></tr><tr><td>Standard</td><td>Express</td><td>Standard</td><td>Express</td></tr><tr><td>0–10 kg</td><td>6.00</td><td>9.00</td><td>5</td><td>2</td></tr><tr><td>11–20 kg</td><td>12.00</td><td>18.00</td><td>6</td><td>3</td></tr></table>",
+    "table_caption": ["Domestic rates"],
+    "table_footnote": ["Weight bands use whole kilograms."],
+    "page_idx": 2,
+    "bbox": [120, 200, 880, 540]
+  }
+]

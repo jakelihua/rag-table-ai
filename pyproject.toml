@@ -33,6 +33,8 @@ keywords = [
     "agentic-rag",
     "deterministic-ai",
     "markdown-tables",
+    "html-tables",
+    "mineru",
 ]
 
 dependencies = []
