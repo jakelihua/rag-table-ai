@@ -6,8 +6,9 @@
 [![Deterministic](https://img.shields.io/badge/execution-100%25%20deterministic-success.svg)]()
 [![Zero LLM Cost](https://img.shields.io/badge/LLM%20Token%20Cost-0-orange.svg)]()
 
-> **The deterministic, zero-LLM table chunking and semantic linearization engine for RAG & AI Agents.**  
-> Solves multi-level headers, interval matching, and cross-chunk table fragmentation without extra latency, tokens, or hallucination.
+> 🇨🇳 **专为解决大模型与 RAG 中超复杂表格解析难题而生**（彻底解决多层复合表头、连续区间匹配、切片丢表头及心算幻觉，100% 确定性、零额外 Token 成本）。  
+> 🌐 **Deterministic, zero-LLM engine built to solve ultra-complex table parsing, chunking & semantic linearization challenges in RAG & AI Agents.**  
+> *Solves hierarchical headers, interval alignment, cross-chunk table fragmentation, and arithmetic errors without extra latency or tokens.*
 
 ---
 

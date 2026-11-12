@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "rag-table-ai"
 version = "0.1.0"
-description = "The deterministic, zero-LLM table chunking and semantic linearization engine for RAG & AI Agents."
+description = "专为解决大模型与 RAG 超复杂表格解析难题而生的确定性引擎 | Deterministic complex table parsing & chunking engine for RAG & AI Agents"
 readme = "README.md"
 authors = [
     { name = "Jake Lihua", email = "jakelihua@gmail.com" }
