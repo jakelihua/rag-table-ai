@@ -22,11 +22,9 @@ Chunk with column labels
 
 ## Quickstart
 
-Requires Python 3.9 or newer.
+Requires Python 3.9 or newer. Run these commands from the root of your checkout.
 
 ```bash
-git clone https://github.com/jakelihua/rag-table-ai.git
-cd rag-table-ai
 python -m pip install .
 python examples/03_shipping_rates.py
 ```

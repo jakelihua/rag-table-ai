@@ -22,16 +22,34 @@
 
 ## 快速开始
 
-需要 Python 3.9 或更高版本。下面的示例会匹配运费档位、读取加急价并计算折后价。
+需要 Python 3.9 或更高版本。请在本地仓库根目录运行以下命令。示例会匹配运费档位、读取加急价并计算折后价。
 
 ```bash
-git clone https://github.com/jakelihua/rag-table-ai.git
-cd rag-table-ai
 python -m pip install .
 python examples/03_shipping_rates.py
 ```
 
-Python 调用见 [Quickstart](README.md#quickstart)。调用方提供待匹配的重量、目标列和折扣。
+```python
+from rag_table_ai import RagTableAI
+
+table = """\
+| Weight   | Standard (USD) | Express (USD) |
+| -------- | -------------- | ------------- |
+| 0–10 kg  | 6.00           | 9.00          |
+| 11–20 kg | 12.00          | 18.00         |
+"""
+
+engine = RagTableAI(max_rows_per_chunk=1)
+_, chunk = engine.split_table(table, table_id="shipping-rates")
+
+print(chunk.markdown_text)  # 第二条数据行仍带有重量、普通和加急三列的列名。
+assert (chunk.start_row, chunk.end_row) == (2, 2)
+assert engine.match("11–20 kg", "15 kg")
+assert not engine.match("11–20 kg", "15 lb")
+assert engine.calculate("18.00 × 80%") == "14.40"
+```
+
+[完整运费示例](examples/03_shipping_rates.py)会从分片中选出匹配的档位和价格列。调用方提供待匹配的重量、目标列和折扣。
 
 ## 如何接入 RAG
 
@@ -49,6 +67,13 @@ Python 调用见 [Quickstart](README.md#quickstart)。调用方提供待匹配�
 ## 如何评估
 
 运费示例用于复现一次表头保留和查价。做检索评测时，先看前几个结果能否给出**正确单元格及对应列名**。用相同的召回与上下文预算比较普通文本切片和已有的重复表头方案。核心处理耗时、索引文本体积及下游上下文 token 分别报告。
+
+## 开发与测试
+
+```bash
+python -m pip install '.[dev]'
+python -m pytest -q
+```
 
 遇到丢表头或匹配错档位的案例，欢迎提交一个脱敏后的最小表格、查询和预期命中的行列。
 
